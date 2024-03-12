@@ -1,68 +1,51 @@
-import rclpy
-from rclpy.node import Node
-from create3api import Create3
-import RPi.GPIO as GPIO
-import time
+from keras.models import load_model  # TensorFlow is required for Keras to work
+import cv2  # Install opencv-python
+import numpy as np
 
-class Create3TeachableNode(Node):
-    def __init__(self):
-        super().__init__('create3_teachable_node')
+# Disable scientific notation for clarity
+np.set_printoptions(suppress=True)
 
-        # Set ultrasonic sensor GPIO pins
-        self.TRIG_PIN = 40
-        self.ECHO_PIN = 38
-        self.ULTRASONIC_THRESHOLD = 15.24  # Distance in centimeters at which the robot should stop
+# Load the model
+model = load_model("keras_Model.h5", compile=False)
 
-        # Connect to the Create3 robot
-        self.robot = Create3('/dev/ttyUSB0')
-        self.robot.start()
+# Load the labels
+class_names = open("labels.txt", "r").readlines()
 
-        # Set up ultrasonic sensor
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(self.TRIG_PIN, GPIO.OUT)
-        GPIO.setup(self.ECHO_PIN, GPIO.IN)
+# CAMERA can be 0 or 1 based on default camera of your computer
+camera = cv2.VideoCapture(0)
 
-        # TODO: Initialize Teachable Machine model (replace with actual code)
+while True:
+    # Grab the webcamera's image.
+    ret, image = camera.read()
 
-    def measure_distance(self):
-        GPIO.output(self.TRIG_PIN, True)
-        time.sleep(0.00001)
-        GPIO.output(self.TRIG_PIN, False)
+    # Resize the raw image into (224-height,224-width) pixels
+    image = cv2.resize(image, (224, 224), interpolation=cv2.INTER_AREA)
 
-        pulse_start = time.time()
-        pulse_end = time.time()
+    # Show the image in a window
+    cv2.imshow("Webcam Image", image)
 
-        while GPIO.input(self.ECHO_PIN) == 0:
-            pulse_start = time.time()
+    # Make the image a numpy array and reshape it to the models input shape.
+    image = np.asarray(image, dtype=np.float32).reshape(1, 224, 224, 3)
 
-        while GPIO.input(self.ECHO_PIN) == 1:
-            pulse_end = time.time()
+    # Normalize the image array
+    image = (image / 127.5) - 1
 
-        pulse_duration = pulse_end - pulse_start
-        distance = pulse_duration * 17150  # Speed of sound is 343 meters per second
+    # Predicts the model
+    prediction = model.predict(image)
+    index = np.argmax(prediction)
+    class_name = class_names[index]
+    confidence_score = prediction[0][index]
 
-        return distance
+    # Print prediction and confidence score
+    print("Class:", class_name[2:], end="")
+    print("Confidence Score:", str(np.round(confidence_score * 100))[:-2], "%")
 
-    def drive_and_rotate(self):
-        # Drive forward until the ultrasonic sensor detects an object within the threshold distance
-        while True:
-            distance = self.measure_distance()
-            self.get_logger().info(f"Distance: {distance:.2f} cm")
+    # Listen to the keyboard for presses.
+    keyboard_input = cv2.waitKey(1)
 
-            if distance > self.ULTRASONIC_THRESHOLD:
-                # TODO: Perform object detection using Teachable Machines (replace with actual code)
+    # 27 is the ASCII for the esc key on your keyboard.
+    if keyboard_input == 27:
+        break
 
-                # Adjust the drive distance value based on your specific requirements
-                self.robot.drive_distance(6)  # Drive 6 inches forward
-                self.robot.rotate_angle(90)   # Rotate 90 degrees
-            else:
-                self.robot.drive_stop()
-
-def main(args=None):
-    rclpy.init(args=args)
-    create3_teachable_node = Create3TeachableNode()
-    create3_teachable_node.drive_and_rotate()
-    rclpy.shutdown()
-
-if __name__ == '__main__':
-    main()
+camera.release()
+cv2.destroyAllWindows()
