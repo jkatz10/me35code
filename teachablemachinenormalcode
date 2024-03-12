@@ -1,0 +1,68 @@
+import rclpy
+from rclpy.node import Node
+from create3api import Create3
+import RPi.GPIO as GPIO
+import time
+
+class Create3TeachableNode(Node):
+    def __init__(self):
+        super().__init__('create3_teachable_node')
+
+        # Set ultrasonic sensor GPIO pins
+        self.TRIG_PIN = 40
+        self.ECHO_PIN = 38
+        self.ULTRASONIC_THRESHOLD = 15.24  # Distance in centimeters at which the robot should stop
+
+        # Connect to the Create3 robot
+        self.robot = Create3('/dev/ttyUSB0')
+        self.robot.start()
+
+        # Set up ultrasonic sensor
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(self.TRIG_PIN, GPIO.OUT)
+        GPIO.setup(self.ECHO_PIN, GPIO.IN)
+
+        # TODO: Initialize Teachable Machine model (replace with actual code)
+
+    def measure_distance(self):
+        GPIO.output(self.TRIG_PIN, True)
+        time.sleep(0.00001)
+        GPIO.output(self.TRIG_PIN, False)
+
+        pulse_start = time.time()
+        pulse_end = time.time()
+
+        while GPIO.input(self.ECHO_PIN) == 0:
+            pulse_start = time.time()
+
+        while GPIO.input(self.ECHO_PIN) == 1:
+            pulse_end = time.time()
+
+        pulse_duration = pulse_end - pulse_start
+        distance = pulse_duration * 17150  # Speed of sound is 343 meters per second
+
+        return distance
+
+    def drive_and_rotate(self):
+        # Drive forward until the ultrasonic sensor detects an object within the threshold distance
+        while True:
+            distance = self.measure_distance()
+            self.get_logger().info(f"Distance: {distance:.2f} cm")
+
+            if distance > self.ULTRASONIC_THRESHOLD:
+                # TODO: Perform object detection using Teachable Machines (replace with actual code)
+
+                # Adjust the drive distance value based on your specific requirements
+                self.robot.drive_distance(6)  # Drive 6 inches forward
+                self.robot.rotate_angle(90)   # Rotate 90 degrees
+            else:
+                self.robot.drive_stop()
+
+def main(args=None):
+    rclpy.init(args=args)
+    create3_teachable_node = Create3TeachableNode()
+    create3_teachable_node.drive_and_rotate()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
